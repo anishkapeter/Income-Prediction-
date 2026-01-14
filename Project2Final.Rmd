@@ -1,0 +1,772 @@
+---
+title: "Project 2 Final Version "
+author: "Anishka Peter, Kyle Kuberski, and Haitie Liu "
+date: "2023-12-01"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+***Data cleaning***
+```{r}
+options(scipen=999)
+
+data <- read.csv("https://raw.githubusercontent.com/anishkapeter/Stat-2-Project-2-/main/adult.data")
+
+# rename cols
+colnames(data) <- c("age", "workclass", "fnlwgt", "education", "education_num", 
+                         "marital_status", "occupation", "relationship", "race", "sex", 
+                         "capital_gain", "capital_loss", "hours_per_week", "native_country", "income")
+
+#change ? data in workclass/occupation to UNKNOWN
+data$workclass <- ifelse(data$workclass == " ?", "UNKNOWN", data$workclass)
+data$occupation <- ifelse(data$occupation == " ?", "UNKNOWN", data$occupation)
+
+
+#Factoring Categoricals/Checking References
+data$workclass <- as.factor(data$workclass)
+levels(data$workclass)
+
+data$education <- as.factor(data$education)
+levels(data$education)
+
+data$marital_status <- as.factor(data$marital_status)
+levels(data$marital_status)
+
+data$occupation <- as.factor(data$occupation)
+levels(data$occupation)
+
+data$relationship <- as.factor(data$relationship)
+levels(data$relationship)
+
+data$race <- as.factor(data$race)
+levels(data$race)
+
+data$sex <- as.factor(data$sex)
+levels(data$sex)
+
+#Factor our response
+data$income <- as.factor(data$income)
+
+
+head(data)
+
+# Display sum of "UNKNOWN" or " ?" in each variable
+cat_vars <- c("age", "workclass", "fnlwgt", "education", "education_num", 
+              "marital_status", "occupation", "relationship", "race", "sex", 
+              "capital_gain", "capital_loss", "hours_per_week", "native_country", "income")
+
+for (var in cat_vars) {
+  unknown_count <- sum(data[[var]] %in% c("UNKNOWN", " ?", "NA"))
+  
+  cat(paste("Unknown count for", var, ":", unknown_count, "\n"))
+  cat("----------------------------\n")
+}
+```
+GENERAL KEY FOR VARIABLES:
+
+age: continuous.
+workclass: Private, Self-emp-not-inc, Self-emp-inc, Federal-gov, Local-gov, State-gov, Without-pay, Never-worked.
+fnlwgt: continuous.
+education: Bachelors, Some-college, 11th, HS-grad, Prof-school, Assoc-acdm, Assoc-voc, 9th, 7th-8th, 12th, Masters, 1st-4th, 10th, Doctorate, 5th-6th, Preschool.
+education_num: continuous.
+marital_status: Married-civ-spouse, Divorced, Never-married, Separated, Widowed, Married-spouse-absent, Married-AF-spouse.
+occupation: Tech-support, Craft-repair, Other-service, Sales, Exec-managerial, Prof-specialty, Handlers-cleaners, Machine-op-inspct, Adm-clerical, Farming-fishing, Transport-moving, Priv-house-serv, Protective-serv, Armed-Forces.
+relationship: Wife, Own-child, Husband, Not-in-family, Other-relative, Unmarried.
+race: White, Asian-Pac-Islander, Amer-Indian-Eskimo, Other, Black.
+sex: Female, Male.
+capital_gain: continuous.
+capital_loss: continuous.
+hours_per_week: continuous.
+native_country: United-States, Cambodia, England, Puerto-Rico, Canada, Germany, Outlying-US(Guam-USVI-etc), India, Japan, Greece, South, China, Cuba, Iran, Honduras, Philippines, Italy, Poland, Jamaica, Vietnam, Mexico, Portugal, Ireland, France, Dominican-Republic, Laos, Ecuador, Taiwan, Haiti, Columbia, Hungary, Guatemala, Nicaragua, Scotland, Thailand, Yugoslavia, El-Salvador, Trinadad&Tobago, Peru, Hong, Holand-Netherlands.
+income: >50K, <=50K
+
+
+
+***Objective 1 : EDA and Logistic Regression Model***
+
+```{r}
+library(ggplot2)
+## General brief look at some of our variables
+
+# Age v Working class
+ggplot(data, aes(x = workclass, y = age)) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ggtitle("Age v Working class")
+
+# Education by sex - Bar plot
+ggplot(data, aes(x = sex, fill = education)) +
+  geom_bar(position = "dodge") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Education by Sex")
+
+
+#hours-per-week by occupation
+ggplot(data, aes(x = occupation, y = hours_per_week)) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 75, hjust = 1),
+        plot.margin = margin(.1, .1, .1, .1, "cm"))+ ggtitle("Hours-per-week v Occupation")
+
+```
+
+
+```{r}
+#High Cardinality of variables is leading to unreadable plots. 
+library(GGally)
+#ggpairs of numeric variables only
+ggpairs(data[, sapply(data, is.numeric)])
+
+```
+
+```{r}
+## Response EDA (income)
+
+library(ggplot2)
+
+#income distribution
+ggplot(data, aes(x = income)) +
+  geom_bar() +
+  labs(title = "Distribution of income")
+
+#numeric feature dist. by income
+ggplot(data, aes(x = age, fill = income)) +
+  geom_histogram(binwidth = 5, position = "dodge", alpha = 0.7) +
+  labs(title = "Age Distribution by income")
+
+ggplot(data, aes(x = hours_per_week, fill = income)) +
+  geom_histogram(binwidth = 5, position = "dodge", alpha = 0.7) +
+  labs(title = "Hours-per-week Distribution by income")
+
+#Categorical feature distributions by income
+ggplot(data, aes(x = education, fill = income)) +
+  geom_bar(position = "dodge") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Education Distribution by income")
+
+#Occupation v income
+ggplot(data, aes(x = occupation, fill = income)) +
+  geom_bar(position = "dodge") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Occupation Distribution by income")
+
+#Sex v Income
+ggplot(data, aes(x = sex, fill = income)) +
+  geom_bar(position = "dodge") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Sex Distribution by income")
+
+#Corr. with numeric features
+numeric_columns <- c("age", "fnlwgt", "education_num", "capital_gain", "capital_loss", "hours_per_week")
+
+# Filter the data to include only the specified numeric columns
+numeric_data <- data[complete.cases(data[, numeric_columns]), numeric_columns]
+
+# Calculate the correlation matrix
+correlation_matrix <- cor(numeric_data)
+ggcorr(numeric_data)
+correlation_matrix
+
+```
+
+```{r}
+# Create a LOESS plot
+ggplot(data, aes(x = capital_gain, y = income)) +
+  geom_smooth(method = "loess", se = FALSE) +
+  geom_line(aes(color = income)) +
+  labs(title = "LOESS Plot", x = "capital_gain", y = "income")
+
+ggplot(data, aes(x = capital_loss, y = income)) +
+  geom_smooth(method = "loess", se = FALSE) +
+  geom_line(aes(color = income)) +
+  labs(title = "LOESS Plot", x = "capital_loss", y = "income")
+
+ggplot(data, aes(x = hours_per_week, y = income)) +
+  geom_smooth(method = "loess", se = FALSE) +
+  geom_line(aes(color = income)) +
+  labs(title = "LOESS Plot", x = "hours_per_week", y = "income")
+
+ggplot(data, aes(x = education_num, y = income)) +
+  geom_smooth(method = "loess", se = FALSE) +
+  geom_line(aes(color = income)) +
+  labs(title = "LOESS Plot", x = "education_num", y = "income")
+
+```
+
+
+3
+***NUMERIC FEATURE SELECTION***
+Here, LASSO is used against the numeric predictors to find the most applicable predictors for our future model. The first output here seems to suggest that all variables should be included in the model based on the LASSO regularization with the specified lambda value. The cvfit's lambda min is extremely low which may suggest that we want to use a larger lambda value. Doing this will strengthen the regularization and drive coefficients to 0 a bit more aggressively.
+
+With a specified lambda value of 0.09 (more aggressive, lambda selected as .08 excludes too much and .1 includes too little), we see the model reduce our numeric predictors to age, educational_num, and capital_gain. We can see some correlation between these specific variables in the prior correlation matrix and ggcorr plot as well, which may indicate strong relationships. Domain knowledge here makes sense with these findings too. Age, education, and capital gains are all very strong indicators of relative income. Excluding the final weight, capital loss, and hours per week
+
+
+```{r}
+#numeric feature selection (LASSO Regularization)
+library(glmnet)
+
+set.seed(123)
+
+#Nab the numeric predictors
+predictor_variables <- c("age", "fnlwgt", "education_num", "capital_gain", "capital_loss", "hours_per_week")
+
+# Subset the data to include only the predictor variables
+x <- as.matrix(data[, predictor_variables])
+y <- as.factor(data$income)
+
+# Fit LASSO logistic regression model
+cvfit <- cv.glmnet(x, y, family = "binomial", alpha = 1)
+
+# Extract selected features and their coefficients
+selected_features <- which(coef(cvfit, s = cvfit$lambda.min) != 0)
+selected_coef <- coef(cvfit, s = cvfit$lambda.min)[selected_features, "s1"]
+
+# Create a list of selected features and coefficients
+selected_list <- data.frame(
+  Variable = predictor_variables[selected_features],
+  Coefficient = selected_coef
+)
+#Give the list of selected predictors
+selected_list
+
+#Min lambda check
+cvfit$lambda.min
+
+#Take 2 with more regularization:
+specified_lambda <- 0.09  #Adjustable lambda amount
+# Fit LASSO logistic regression model
+fit <- glmnet(x, y, family = "binomial", alpha = 1, lambda = specified_lambda)
+
+# Extract selected features and their coefficients
+selected_features <- which(coef(fit) != 0)
+selected_coef <- coef(fit)[selected_features]
+
+# Create a list of selected features and coefficients
+selected_list <- data.frame(
+  Variable = predictor_variables[selected_features],
+  Coefficient = selected_coef
+)
+
+selected_list
+
+
+```
+
+***CATEGORICAL FEATURE SELECTION***
+Lasso again is used for our categorical feature selection. We are using dummy encoding to force these predictors into binary categories to allow for our feature selection to capture the impact of each category separately. This allows us to shrink coefficients associated with less significance on our predictions towards zero in subsets as opposed to the entire category itself. We can see from our output below that feature selection, from a very broad sense, took work_class and education as our two main predictors of importance. As these are one-hot encoded, they are broken down even further to their specific levels which we can choose to include separately or not in our final model.
+
+```{r}
+#categorical feature selection (LASSO Reg. with one-hot encoding/dummy encoding)
+library(glmnet)
+
+predictor_variables <- c("workclass", "education", "marital_status", "occupation", "relationship", "race", "sex", "native_country")
+
+# Subset the data to include only the predictor variables
+x <- model.matrix(~ . - 1, data = data[, c(predictor_variables)])  # -1 removes the intercept column
+y <- as.factor(data$income)
+
+specified_lambda <- 0.05  #change penalty level
+
+# Fit the LASSO LRM with the specified lambda
+fit <- glmnet(x, y, family = "binomial", alpha = 1, lambda = specified_lambda)
+
+# Extract selected features and their coefficients
+selected_features <- which(coef(fit) != 0)
+selected_coef <- coef(fit)[selected_features]
+
+# Create a list of selected features and coefficients
+selected_list <- data.frame(
+  Variable = colnames(x)[selected_features],
+  Coefficient = selected_coef
+)
+
+selected_list
+```
+
+***Build the Model***
+
+From our prior EDA, out of the 14 total predictors (excluding response), we can move forward with building a model from a subset of predictors that will include:
+1. workclass (categorical)
+2. education (categorical)
+3. occupation (categorical)
+4. marital_status (categorical)
+5. age (numeric)
+6. fnlwgt (numeric)
+7. capital_gain (numeric)
+
+We also would like to use domain knowledge and conversations among our group to include the following predictor:
+
+8. sex (categorical)
+
+```{r}
+#Building the LMR
+set.seed(123)
+#Holder for easy change of predictors given further EDA...
+selected_predictors <- c("workclass", "education", "age", "fnlwgt", "capital_gain", "occupation", "sex", "marital_status")
+
+#subset of the data with the selected predictors
+subset_data <- data[, c(selected_predictors, "income")]
+
+#logistic regression model fit
+fit <- glm(income ~ ., data = subset_data, family = "binomial")
+summary(fit)
+
+#Odds ratios for effect size interpretation
+coefficients <- coef(fit)
+odds_ratios <- exp(coefficients)
+odds_ratios
+
+library(jtools)
+effect_plot(fit, pred = capital_gain, interval = TRUE, plot.points = FALSE, jitter = 0.01)
+
+library(ResourceSelection)
+hoslem.test(fit$y, fitted(fit), g=10)
+
+```
+
+***Interpretation***
+For interpretation, we will be focusing on a few groups in each predictor variable with the most statistical significance, magnitude of coefficients, effect sizes significantly above or below 1, and areas of interest for domain knowledge. Interpretation of statistical significance, as well as practical significance will be taken into account.
+
+**Interpretations:**
+
+*EDUCATION*
+-Bachelors
+  Odds Ratio: 7.34
+  Interpretation: Individuals with a Bachelor's education are estimated to have 7.34 times higher odds of making over $50K compared to those with a 10th grade education. 
+  This decent increase in odds displays the practical value of obtaining a Bachelor's degree, signifying a meaningful impact on income levels.  
+
+-Professional School (Prof-School)
+  Odds Ratio: 19.45
+  Interpretation: Individuals with a Professional School education are estimated to have 19.45 times higher odds of making over $50K compared to those with a 10th grade education.
+  The odds ratio suggests a decent practical advantage for individuals with a Professional School education, indicating a correlation between this level of education and higher income.
+  
+
+-Masters
+  Odds Ratio: 10.83
+  Interpretation: Individuals with a Master's education are estimated to have 10.83 times higher odds of making over $50K compared to those with a 10th grade education.
+  This significant increase in odds emphasizes the practical benefits of obtaining a Master's degree, showcasing a positive impact on earning potential overall.
+
+-Doctorate
+  Odds Ratio: 24.35
+  Individuals with a Doctorate education are estimated to have 24.35 times higher odds of making over $50K compared to those with a 10th grade education. 
+  This substantial increase in odds suggests that pursuing a Doctorate education significantly contributes to the likelihood of achieving a higher income, indicating a practical advantage for individuals with this level of education.
+
+
+Generally, we can see almost a direct correlation to each step of education returning a net increase, from 3.22, 7.30, 15.03, and finally 24.24 increased odds of making over $50,000 respectively. Practically, we can see positive increase in predicted earning odds as education increases.
+
+*WORK CLASS*
+
+-Self employed incorporated (Self-emp-inc)
+  Odds Ratio: 0.86
+  Interpretation: Individuals in the Self-employed, incorporated category are estimated to have 0.86 times higher odds of making over $50K compared to those in working in the Federal government work class reference category.
+  This suggests that choosing a self-employed, incorporated career path is associated with a practical advantage in achieving a higher income, potentially due to entrepreneurial opportunities and financial independence.
+
+-Private
+  Odds Ratio: 0.61
+  Interpretation: Individuals in the Private work class are estimated to have 0.61 times higher odds of making over $50K compared to those in working in the Federal government work class reference category.
+  While the odds ratio is slightly lower than other categories, it still indicates a practical advantage for individuals in the private sector, reflecting the economic benefits associated with private employment.
+
+*AGE*
+-Age
+  Odds Ratio: 1.02
+  Interpretation: For each year increase in age, the odds of making over $50k are estimated to increase by a factor of 1.02.
+  This implies that with each passing year, individuals experience a gradual but consistent improvement in the odds of achieving a higher income.
+  
+*SEX*
+
+-Male 
+  Odds Ratio: 1.30
+  Interpretation: Men are estimated to have 1.30 times higher odds of making over $50k compared to females.
+  This gender difference in income odds is a practical consideration, reflecting existing disparities and suggesting potential areas for addressing gender-based income gaps.
+  
+*MARITAL STATUS*
+
+-Married-AF-spouse
+  Odds Ratio: 17.02
+  Individuals married to a spouse in the armed forces are estimated to have 17.02 times higher odds of making over $50K compared to those who are divorced.
+  The substantial odds ratio here may predict that those with military support have a much higher chance of making a steady income over $50k compared to those who are divorced.
+  
+-Married-civ-spouse
+  Odds Ratio: 8.12
+  Individuals married to a civilian spouse are estimated to have 8.12 times higher odds of making over $50K compared to those who are divorced.
+  The practical take here is that shared finances and stability associated with a married life may offer better chances of being over $50k than if divorced.
+
+-Never-married
+  Odds Ratio: 0.54
+  Individuals with the marital status "Never-married" are estimated to have 0.54 times the odds of making over $50K compared to those who are divorced.
+  The odds ratio of 0.54 indicates a lower likelihood of achieving a higher income for individuals who are never-married. This might be influenced by various factors, such as career focus or economic independence.
+
+
+***Objective 2  ***
+
+**MORE EDA**
+```{r}
+library(dplyr)
+library(patchwork)
+
+#Interaction1 : age : sex
+
+data_proportions <- data %>%
+  group_by(income, `age`) %>%
+  count(`sex`) %>%
+  mutate(proportion = n / sum(n)) %>%
+  ungroup()
+
+# Now, plot the proportions using ggplot2
+g1=ggplot(data_proportions, aes(x = `age`, y = proportion, fill = `sex`)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_grid(~ income) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),legend.position = "none") +
+  labs(y = "Proportion", fill = "Sex")
+
+#Interaction2 work class :education_num
+
+data_proportions <- data %>%
+  group_by(income, `education_num`) %>%
+  count(`workclass`) %>%
+  mutate(proportion = n / sum(n)) %>%
+  ungroup()
+
+
+ggplot(data_proportions, aes(x = `education_num`, y = proportion, fill = `workclass`)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_grid(~ income) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  labs(y = "Proportion", fill = "Marital Status")
+
+
+#Interaction3  sex:education
+
+data_proportions <- data %>%
+  group_by(income, `education`) %>%
+  count(`sex`) %>%
+  mutate(proportion = n / sum(n)) %>%
+  ungroup()
+
+
+g2=ggplot(data_proportions, aes(x = `education`, y = proportion, fill = `sex`)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_grid(~ income) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  labs(y = "Proportion", fill = "sex")
+
+#There appears to be a difference in the proportion of males and females within each education level for both income brackets (<=50K and >50K). This could indicate that the effect of education on income may be different for males and females.
+
+
+
+
+
+#Interaction4  sex: occupation   (not strong)
+
+data_proportions <- data %>%
+  group_by(income, `occupation`) %>%
+  count(`sex`) %>%
+  mutate(proportion = n / sum(n)) %>%
+  ungroup()
+
+
+  ggplot(data_proportions, aes(x = `occupation`, y = proportion, fill = `sex`)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_grid(~ income) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  labs(y = "Proportion", fill = "sex")
+
+#There is a visible disparity in the proportion of males and females within certain occupations for both income brackets. This could indicate that the effect of occupation on income may be modulated by sex.
+
+#other interactions:
+#marital_status :occupation
+#relationship: occupation
+#relationship: education_num
+#race:education
+#race:age
+#race:education_num
+#race:occupation
+
+
+data_proportions <- data %>%
+  group_by(income, `race`) %>%
+  count(`education_num`) %>%
+  mutate(proportion = n / sum(n)) %>%
+  ungroup()
+
+ggplot(data_proportions, aes(x = `education_num`, y = proportion, fill = `race`)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_grid(~ income) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  labs(y = "Proportion", fill = "race")
+
+```
+
+
+**COMPLEX MODEL **
+
+```{r}
+library(caret)
+
+
+# Assuming 'data' is your data frame with all the variables
+
+# Create a formula that includes all main effects and their two-way interactions
+variables <- c("workclass", "education", "age", "education_num", "capital_gain", 
+               "marital_status", "relationship", "race", "native_country", "occupation", "sex")
+
+# Create a formula string with all two-way interactions
+formula_string <- paste("income ~", paste(variables, collapse = " + "), 
+                        "+", paste0("age:sex + sex:education + sex:occupation + workclass:education_num + race:education + race:age + race: education_num + race : occupation + relationship: occupation + relationship:education_num +marital_status :occupation"))
+
+# Convert the string to a formula object
+formula <- as.formula(formula_string)
+
+
+model <- glm(formula,data=data,  family = "binomial") 
+
+summary(model)
+
+```
+
+```{R}
+library(caret)
+data_test = read.csv("https://raw.githubusercontent.com/anishkapeter/Stat-2-Project-2-/main/adult.test",header=FALSE)
+data_test <- data_test[-1,]
+
+colnames(data_test) <- c("age", "workclass", "fnlwgt", "education", "education_num", 
+                         "marital_status", "occupation", "relationship", "race", "sex", 
+                         "capital_gain", "capital_loss", "hours_per_week", "native_country","income")
+
+
+# change age into int
+data_test$age <- as.integer(data_test$age)
+#change ? data in workclass/occupation to UNKNOWN
+data_test$workclass <- ifelse(data_test$workclass == " ?", "UNKNOWN", data_test$workclass)
+data_test$occupation <- ifelse(data_test$occupation == " ?", "UNKNOWN", data_test$occupation)
+
+
+#Factoring Categoricals/Checking References
+
+data_test$workclass[data_test$workclass == ""] <- "UNKNOWN"
+data_test$workclass <- factor(data_test$workclass, levels = levels(data$workclass))
+levels(data_test$workclass) 
+
+
+data_test$education <- as.factor(data_test$education)
+data_test$education[data_test$education == ""] <- NA
+data_test$education <- droplevels(data_test$education)
+levels(data_test$education)
+
+data_test$marital_status <- as.factor(data_test$marital_status)
+data_test$marital_status[data_test$marital_status == ""] <- NA
+data_test$marital_status <- droplevels(data_test$marital_status)
+levels(data_test$marital_status)
+
+data_test$occupation <- as.factor(data_test$occupation)
+data_test$occupation[data_test$occupation == ""] <- NA
+data_test$occupation <- droplevels(data_test$occupation)
+levels(data_test$occupation)
+
+data_test$relationship <- as.factor(data_test$relationship)
+data_test$relationship[data_test$relationship == ""] <- NA
+data_test$relationship <- droplevels(data_test$relationship)
+levels(data_test$relationship)
+
+data_test$race <- as.factor(data_test$race)
+data_test$race[data_test$race == ""] <- NA
+data_test$race <- droplevels(data_test$race)
+levels(data_test$race)
+
+data_test$sex <- as.factor(data_test$sex)
+data_test$sex[data_test$sex == ""] <- NA
+data_test$sex <- droplevels(data_test$sex)
+levels(data_test$sex)
+
+data_test$native_country <- as.factor(data_test$native_country)
+data_test$native_country[data_test$native_country == ""] <- NA
+data_test$native_country <- droplevels(data_test$native_country)
+levels(data_test$native_country) 
+
+data_test$age=as.integer(data_test$age)
+
+data_test$income <- as.factor(ifelse(data_test$income==" >50K."," >50K"," <=50K"))
+
+predictions = predict(model, data_test, type = "response")
+
+threshold = 0.5
+
+
+
+class_predictions = ifelse(predictions > threshold, " >50K", " <=50K")
+
+cm = table(Predicted = as.factor(class_predictions), Actual = as.factor(data_test$income))
+
+confusion_matrix <- confusionMatrix(cm)
+
+print(confusion_matrix)
+
+
+
+```
+
+**Evaluation **
+
+```{r}
+
+sensitivity = 2409 / (2409 + 1437)
+
+specificity = 10696 / (10696 + 1739)
+
+prevalence = (2409 + 1437) / (10696 + 1437 + 1739 + 2409)
+
+ppv = 2409 / (2409 + 1739)
+
+npv = 10696 / (10696 + 1437)
+
+library(pROC)
+binary_income = as.numeric(data_test$income == " >50K")  # Assuming " >50K" is the positive class
+
+auroc_result = roc(response = binary_income, predictor = predictions)
+auroc = auroc_result$auc
+plot(auroc_result,print.thres="best")
+text(x = 0.6, y = 0.4, labels = paste("AUC =", round(auroc, 4)))
+
+
+```
+
+
+**QDA Model **
+
+We can only use continuous predictors for QDA so we will use the 3 that were picked from the lasso feature selection earlier
+
+1. age
+2. fnlwgt
+3. capital_gain
+
+Looking at the covariance variance matrices, we can see that they are not the same so we can not use LDA so we will use QDA 
+
+
+```{r}
+library(caret)
+set.seed(123)
+validate <- data_test
+data$income.word <-as.factor(ifelse(data$income==" >50K","more","less"))
+validate$income.word <-as.factor(ifelse(validate$income==" >50K","more","less"))
+more <- data[data$income.word == "more",]
+less <- data[data$income.word == "less",]
+
+predictor_variables <- c("age", "education_num", "capital_gain", "capital_loss", "hours_per_week")
+greater_than_50kcov <- cov(more[,predictor_variables])
+less_than_50kcov <- cov(less[,predictor_variables])
+greater_than_50kcov
+less_than_50kcov
+
+fitControl<-trainControl(method="cv",number=10,classProbs=TRUE, summaryFunction=mnLogLoss)
+qda.fit<-train(income.word~education_num + age + capital_gain,
+                data=data,
+                    method="qda",
+                    trControl=fitControl,
+                    metric="logLoss")
+
+predictions <- predict(qda.fit, validate, type = "prob")[,"more"]
+
+threshold=0.022
+qda.preds<-factor(ifelse(predictions>threshold,"more","less"),levels=c("less","more"))
+confusionMatrix(data = qda.preds, reference = validate$income.word)
+
+
+library(pROC)
+qda.predprobs<-predict(qda.fit, validate, type = "prob")
+
+qda.roc<-roc(response=validate$income.word,predictor=qda.predprobs$more,levels=c("more","less"))
+
+auc(qda.roc)
+
+```
+Specificity = 0.6264          
+Sensitivity = 0.8602 
+PPV = 0.8816
+NPV = 0.5808
+Prevalence = 0.7638
+AUROC = 0.8129
+
+**Random Forest Model **
+
+We will use PCA to reduce the 5 continuous variables to run the random forest model 
+
+```{r}
+library(caret)
+pc.result<-prcomp(data[,c(1,3,5,11,12)],scale.=TRUE)
+
+#Eigen Vectors
+pc.result$rotation
+
+#Eigen Values
+eigenvals<-pc.result$sdev^2
+eigenvals
+
+
+#Scree plot
+par(mfrow=c(1,2))
+plot(eigenvals,type="l",main="Scree Plot",ylab="Eigen Values",xlab="PC #")
+plot(eigenvals/sum(eigenvals),type="l",main="Scree Plot",ylab="Prop. Var. Explained",xlab="PC #",ylim=c(0,1))
+cumulative.prop<-cumsum(eigenvals/sum(eigenvals))
+lines(cumulative.prop,lty=2) # About 80% of the variablity is explained by 4PC
+
+dim(pc.result$x)
+dim(data)
+pcdata <- data.frame(pc.result$x,data$income,data$income.word)
+names(pcdata) <- c("PC1", "PC2", "PC3", "PC4", "PC5", "income","income.word") 
+
+pc.validate<-prcomp(validate[,c(1,3,5,11,12)],scale.=TRUE)
+dim(pc.validate$x)
+dim(data)
+pcvalidate <- data.frame(pc.validate$x,validate$income,validate$income.word)
+names(pcvalidate) <- c("PC1", "PC2", "PC3", "PC4", "PC5", "income","income.word") 
+
+
+fitControl<-trainControl(method="cv",number=10,classProbs=TRUE, summaryFunction=mnLogLoss)
+set.seed(123)
+
+
+rf.fit<-train(income.word~PC1+PC2+PC3+PC4,
+                data=pcdata,
+                    method="rf",
+                    trControl=fitControl,
+                    metric="logLoss")
+rfpredictions <- predict(rf.fit, pcvalidate, type = "prob")[,"more"]
+
+threshold=0.7
+rf.preds<-factor(ifelse(rfpredictions>threshold,"more","less"),levels=c("less","more"))
+confusionMatrix(data = rf.preds, reference = pcvalidate$income.word)
+
+rf.predprobs<-predict(rf.fit, pcvalidate, type = "prob")
+
+rf.roc<-roc(response=pcvalidate$income.word,predictor=rf.predprobs$more,levels=c("more","less"))
+
+auc(rf.roc)
+
+
+
+plot(qda.roc,print.thres="best")
+plot(rf.roc,print.thres="best")
+
+plot(qda.roc,print.thres="best")
+plot(rf.roc,print.thres="best",col="red",add=T,legend=T)
+legend("bottomright",
+       legend=c("QDA", "Random Forest"),
+       col=c("black", "red"),
+       lwd=4, cex =1, xpd = TRUE, horiz = FALSE)
+
+```
+
+Specificity = 0.0936
+Sensitivity = 0.8051 
+PPV = 0.7417
+NPV = 0.1294
+Prevalence = 0.7638
+AUROC = 0.6687
+  
